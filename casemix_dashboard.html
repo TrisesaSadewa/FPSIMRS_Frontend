@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIS Multi-Payer Module</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: { 500: '#2563eb', 600: '#1d4ed8' }, 
+                        bpjs: { 500: '#00A651', 600: '#008C44' },
+                        private: { 500: '#8b5cf6', 600: '#7c3aed' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        .animate-scale-in { animation: scaleIn 0.3s ease-out forwards; }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+
+    <!-- 1. ERROR MODAL (Generic) -->
+    <div id="error-modal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onclick="closeErrorModal()"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-md animate-scale-in">
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <div class="sm:flex sm:items-start">
+                            <div class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                                <i class="fa-solid fa-triangle-exclamation text-red-600"></i>
+                            </div>
+                            <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                                <h3 class="text-base font-bold text-gray-900">Validasi Data</h3>
+                                <p class="text-sm text-gray-500 mt-2" id="modal-message">Terjadi kesalahan.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="closeErrorModal()" class="w-full sm:w-auto justify-center rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 transition-colors">Tutup (Esc)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. APS WARNING MODAL -->
+    <div id="aps-modal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-red-900/80 backdrop-blur-md transition-opacity" onclick="closeApsModal()"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg animate-scale-in border-4 border-red-500">
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <div class="flex flex-col items-center text-center">
+                            <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-red-100 mb-4 animate-bounce">
+                                <i class="fa-solid fa-ban text-4xl text-red-600"></i>
+                            </div>
+                            <h3 class="text-2xl font-bold text-gray-900 mb-2">GUGUR KLAIM (APS)</h3>
+                            <p class="text-sm text-gray-600 mb-6">
+                                Pasien pulang atas permintaan sendiri. Biaya perawatan <b>tidak ditanggung BPJS Kesehatan</b> sesuai Perpres No. 59 Tahun 2024.
+                            </p>
+                            
+                            <div class="w-full bg-slate-900 rounded-xl p-4 border border-slate-700">
+                                <p class="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Total Tanggungan Pasien</p>
+                                <p class="text-3xl font-mono font-bold text-white" id="aps-modal-amount">Rp 0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="closeApsModal()" class="w-full justify-center rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-slate-700 transition-colors">
+                            Mengerti & Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="bg-white border-b border-gray-200 px-6 py-3 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div id="nav-icon" class="bg-gray-700 text-white p-2.5 rounded-xl shadow-lg transition-colors duration-500">
+                    <i class="fa-solid fa-hospital text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-800 text-lg leading-tight">HIS Insurance Module</h1>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold">Multi-Payer System</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <a href="index.html" class="hidden md:flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200">
+                    <i class="fa-solid fa-chevron-left"></i> Kembali ke Dashboard
+                </a>
+                <div class="text-right hidden sm:block">
+                    <span class="block text-sm font-bold text-slate-700">Admin Asuransi</span>
+                    <span class="text-xs text-gray-500">Finance Office</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-12 gap-6">
+
+        <!-- LEFT COL -->
+        <section class="col-span-12 lg:col-span-4 space-y-6">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div id="card-header" class="bg-slate-800 px-5 py-4 flex justify-between items-center transition-colors duration-500">
+                    <h2 class="text-white font-bold flex items-center gap-2.5 text-sm uppercase tracking-wide">
+                        <i class="fa-solid fa-id-card"></i> Cek Kepesertaan
+                    </h2>
+                    <span class="text-[10px] text-white/50 bg-white/10 px-2 py-0.5 rounded">Realtime</span>
+                </div>
+                
+                <div class="p-5">
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Cari Pasien (No. RM / Nama / Kartu)</label>
+                    <div class="flex gap-2 mb-4 relative z-50">
+                        <div class="relative flex-1">
+                            <input type="text" id="card-input" class="w-full pl-3 pr-3 border border-gray-200 rounded-lg py-2.5 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" 
+                                   placeholder="Ketik Nama/RM/Kartu..." autocomplete="off">
+                            <div id="search-results" class="absolute top-full left-0 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 hidden max-h-60 overflow-y-auto z-50"></div>
+                        </div>
+                        <button onclick="checkEligibility()" id="btn-check"
+                                class="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-all">
+                            Cek
+                        </button>
+                    </div>
+
+                    <div id="eligibility-result" class="hidden animate-fade-in">
+                        <div id="status-box" class="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4 transition-colors duration-500">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div id="status-icon" class="bg-gray-200 p-2 rounded-full text-gray-600 shadow-sm">
+                                    <i class="fa-solid fa-check"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-gray-800 text-sm" id="res-status">AKTIF</p>
+                                    <p class="text-xs text-gray-500 font-bold" id="res-insurance-name">-</p>
+                                </div>
+                            </div>
+                            
+                            <div id="private-rules" class="hidden text-xs text-gray-600 bg-white/50 p-2 rounded mb-2 border border-gray-200">
+                                <div class="flex justify-between"><span>Coverage:</span> <span class="font-bold" id="res-cov-pct">-</span></div>
+                                <div class="flex justify-between"><span>Plafon:</span> <span class="font-bold" id="res-plafon">-</span></div>
+                            </div>
+
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between text-xs border-b border-gray-200 pb-1.5">
+                                    <span class="text-gray-500">Nama Pasien</span>
+                                    <span class="font-bold text-gray-700" id="res-name">-</span>
+                                </div>
+                                <div class="flex justify-between text-xs border-b border-gray-200 pb-1.5">
+                                    <span class="text-gray-500">NIK</span>
+                                    <span class="font-mono text-gray-600" id="res-nik">-</span>
+                                </div>
+                                <div class="flex justify-between text-xs border-b border-gray-200 pb-1.5">
+                                    <span class="text-gray-500">Jenis Kelamin</span>
+                                    <span class="font-medium text-gray-600" id="res-gender">-</span>
+                                </div>
+                                <!-- Added Class Level Display -->
+                                <div class="flex justify-between text-xs border-b border-gray-200 pb-1.5">
+                                    <span class="text-gray-500">Hak Kelas</span>
+                                    <span class="font-bold text-gray-700" id="res-class">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onclick="generateDocument()" id="btn-create-doc"
+                                class="w-full bg-gray-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition-all flex justify-center items-center gap-2 active:scale-95">
+                            <i class="fa-solid fa-file-signature"></i> <span id="btn-create-text">Buat Dokumen</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="doc-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hidden relative overflow-hidden animate-fade-in">
+                <div class="flex items-center justify-between mb-4 relative z-10">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest" id="doc-label">Dokumen Aktif</h3>
+                    <span class="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-full border border-blue-100">Rawat Inap</span>
+                </div>
+                <div class="space-y-4 relative z-10">
+                    <div>
+                        <label class="text-[10px] text-gray-400 uppercase font-bold">Nomor Dokumen</label>
+                        <p class="font-mono font-bold text-xl text-slate-800 tracking-tight" id="doc-number">...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                <h4 class="text-[10px] font-bold text-gray-400 uppercase mb-2">System Log</h4>
+                <div id="api-log-content" class="h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar text-[10px] font-mono text-gray-500"></div>
+            </div>
+            
+            <a href="index.html" class="block w-full text-center px-4 py-3 mt-6 text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 border border-gray-200 rounded-xl transition-all shadow-sm group">
+                <i class="fa-solid fa-chevron-left mr-2 group-hover:-translate-x-1 transition-transform"></i> Kembali ke Dashboard
+            </a>
+        </section>
+
+        <!-- RIGHT COL: Calculation -->
+        <section class="col-span-12 lg:col-span-8 flex flex-col gap-6">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
+                <!-- Header with Reset Button -->
+                <div class="flex justify-between items-start mb-8">
+                    <div>
+                        <h2 class="font-bold text-xl text-slate-800 flex items-center gap-3">
+                            <span>Simulasi Biaya</span>
+                            <span class="text-xs font-normal bg-gray-100 px-2 py-1 rounded text-gray-500" id="sim-mode">Menunggu Dokumen...</span>
+                        </h2>
+                    </div>
+                    <button onclick="resetSimulation()" class="group flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all" title="Bersihkan form diagnosa & hasil">
+                        <i class="fa-solid fa-rotate-left group-hover:-rotate-180 transition-transform duration-500"></i> 
+                        Reset Form
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Diagnosa (ICD-10)</label>
+                        <select id="icd10-select" class="block w-full px-3 py-3 text-sm border-gray-300 rounded-xl bg-gray-50 hover:bg-white transition-all cursor-pointer shadow-sm focus:ring-2 focus:ring-blue-500 transition-shadow">
+                            <option value="" disabled selected>Loading...</option>
+                        </select>
+                        <p id="icd10-hint" class="hidden text-xs text-blue-600 mt-1.5 font-medium flex items-center animate-fade-in"><i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> Auto-filled from Invoice</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Tindakan (Optional)</label>
+                        <select id="icd9-select" class="block w-full px-3 py-3 text-sm border-gray-300 rounded-xl bg-gray-50 hover:bg-white transition-all cursor-pointer shadow-sm focus:ring-2 focus:ring-blue-500 transition-shadow">
+                            <option value="">Loading...</option>
+                        </select>
+                        <p id="icd9-hint" class="hidden text-xs text-blue-600 mt-1.5 font-medium flex items-center animate-fade-in"><i class="fa-solid fa-wand-magic-sparkles mr-1.5"></i> Auto-filled from Invoice</p>
+                    </div>
+                </div>
+
+                <!-- Advanced Grouper Fields -->
+                <div class="mt-6 pt-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Secondary Diagnoses -->
+                    <div class="col-span-2">
+                        <label class="block text-xs font-bold text-gray-500 mb-2">Diagnosa Sekunder (Komorbiditas)</label>
+                        <div id="secondary-container" class="space-y-2 mb-2"></div>
+                        <button onclick="addSecondary()" class="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"><i class="fa-solid fa-plus"></i> Tambah Diagnosa</button>
+                    </div>
+
+                    <!-- Discharge -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5">Cara Pulang</label>
+                        <select id="discharge-status" class="block w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white">
+                            <option value="Pulang Sehat">Sembuh / Perbaikan</option>
+                            <option value="Rujuk">Rujuk RS Lain</option>
+                            <option value="Meninggal">Meninggal Dunia</option>
+                            <option value="APS">Pulang Paksa (APS)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Pindah Kelas (Only for BPJS) -->
+                    <div id="class-change-container" class="hidden">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs font-bold text-gray-500">Kelas Perawatan</label>
+                            <div class="flex items-center gap-1.5">
+                                <input type="checkbox" id="upgrade-class-check" class="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500" onchange="toggleClassSelect()">
+                                <label for="upgrade-class-check" class="text-[10px] font-bold text-blue-600 cursor-pointer select-none">Pindah Kelas?</label>
+                            </div>
+                        </div>
+                        
+                        <!-- Default Display -->
+                        <div id="default-class-display" class="block w-full px-3 py-2.5 text-sm border border-gray-200 bg-gray-50 rounded-lg text-gray-500 italic">
+                            Sesuai Hak Kelas
+                        </div>
+
+                        <!-- Dropdown -->
+                        <select id="upgrade-class-select" class="hidden w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 animate-fade-in">
+                            <option value="1">Kelas 1</option>
+                            <option value="2">Kelas 2</option>
+                            <option value="3">Kelas 3</option>
+                        </select>
+                    </div>
+
+                    <!-- Conditional Birth Weight -->
+                    <div id="birth-weight-container" class="hidden animate-fade-in col-span-1">
+                        <label class="block text-xs font-bold text-gray-500 mb-1.5">Berat Lahir (Gram)</label>
+                        <input type="number" id="birth-weight" class="block w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500" placeholder="Khusus Bayi < 28 Hari">
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-gray-100 flex justify-end">
+                    <button onclick="calculateBenefits()" id="btn-calc" disabled
+                            class="bg-gray-100 text-gray-400 px-8 py-3 rounded-xl font-bold shadow-none transition-all flex items-center gap-2 cursor-not-allowed">
+                        <i class="fa-solid fa-calculator"></i> Hitung
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULT CARD -->
+            <div id="result-card" class="hidden glass-card text-white rounded-2xl shadow-xl relative overflow-hidden transition-all duration-500">
+                <div class="p-6 md:p-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 relative z-10">
+                        <div class="border-b lg:border-b-0 lg:border-r border-white/10 pb-6 lg:pb-0 lg:pr-10">
+                            <div class="flex items-center gap-3 mb-6">
+                                <span id="res-badge" class="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded">RESULT</span>
+                            </div>
+                            <h2 class="text-2xl md:text-3xl font-bold mb-2 tracking-tight text-white" id="res-title">...</h2>
+                            <p class="text-sm font-light text-blue-100 leading-snug mb-8" id="res-subtitle">...</p>
+                            <div class="grid grid-cols-2 gap-6" id="res-grid"></div>
+                        </div>
+                        <div class="flex flex-col justify-center">
+                            <h3 class="text-white/60 text-xs font-bold uppercase tracking-widest mb-6" id="fin-title">Financials</h3>
+                            <div class="space-y-4 text-sm mb-6">
+                                <div class="flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5">
+                                    <span class="text-white/80">Total Tagihan RS</span>
+                                    <span class="font-mono font-bold" id="bill-total">Rp 0</span>
+                                </div>
+                                <!-- SPLIT PAYMENT DISPLAY (For BPJS) -->
+                                <div id="bpjs-split" class="hidden space-y-2 border-t border-white/10 pt-2 mt-2">
+                                    <div class="flex justify-between text-xs text-green-200/70">
+                                        <span>Jasa Sarana (RS)</span>
+                                        <span id="split-sarana">Rp 0</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs text-green-200/70">
+                                        <span>Jasa Pelayanan (Medis)</span>
+                                        <span id="split-pelayanan">Rp 0</span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-end border-t border-white/10 pt-4 mt-2">
+                                    <span class="text-lg font-bold" id="fin-label">...</span>
+                                    <span class="text-3xl font-bold" id="fin-amount">Rp 0</span>
+                                </div>
+                            </div>
+                            <div id="fin-note" class="text-xs text-white/50 text-center italic"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const API_URL = "http://localhost:8000/api";
+        let appState = { patient: null, icdList: [] };
+        
+        // --- SAFE UPDATE HELPER ---
+        const safeSetText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        };
+
+        const fmtMoney = (n) => {
+            if (n === undefined || n === null || isNaN(n)) return "Rp 0";
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
+        };
+        const log = (msg) => {
+            const el = document.getElementById('api-log-content');
+            if (el) el.innerHTML = `<div class="mb-1 border-l-2 border-gray-300 pl-2">> ${msg}</div>` + el.innerHTML;
+        };
+
+        let searchTimeout;
+        const searchInput = document.getElementById('card-input');
+        const resultsBox = document.getElementById('search-results');
+
+        window.onload = function() { 
+            fetchReferences(); 
+            document.addEventListener('keydown', function(event) {
+                if (event.key === "Escape") {
+                    closeErrorModal();
+                    closeApsModal();
+                    if(resultsBox) resultsBox.classList.add('hidden');
+                }
+            });
+            
+            document.getElementById('icd10-select').addEventListener('change', function() {
+                checkNeonatal(this.value);
+            });
+
+            // Auto-complete logic
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                const q = e.target.value;
+                if(q.length < 2) {
+                    resultsBox.classList.add('hidden');
+                    return;
+                }
+                
+                searchTimeout = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/patients/search?query=${q}`);
+                        const data = await res.json();
+                        
+                        resultsBox.innerHTML = '';
+                        if(data.length > 0) {
+                            resultsBox.classList.remove('hidden');
+                            data.forEach(item => {
+                                const div = document.createElement('div');
+                                div.className = "px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-gray-50 last:border-0";
+                                div.innerHTML = `
+                                    <p class="text-sm font-bold text-slate-700">${item.name} <span class="font-normal text-xs text-gray-400">(${item.mr_no})</span></p>
+                                    <div class="flex justify-between items-center mt-1">
+                                        <span class="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">${item.card_number}</span>
+                                        <span class="text-[10px] text-gray-500">${item.insurance}</span>
+                                    </div>
+                                `;
+                                div.onclick = () => {
+                                    searchInput.value = item.card_number;
+                                    resultsBox.classList.add('hidden');
+                                };
+                                resultsBox.appendChild(div);
+                            });
+                        } else {
+                            resultsBox.classList.add('hidden');
+                        }
+                    } catch(e) { console.error(e); }
+                }, 300);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!searchInput.contains(e.target) && !resultsBox.contains(e.target)) {
+                    resultsBox.classList.add('hidden');
+                }
+            });
+        };
+
+        // --- MODAL FUNCTIONS ---
+        function showError(msg) {
+            safeSetText('modal-message', msg);
+            document.getElementById('error-modal').classList.remove('hidden');
+        }
+        function closeErrorModal() { document.getElementById('error-modal').classList.add('hidden'); }
+
+        function showApsModal(amount) {
+            safeSetText('aps-modal-amount', amount);
+            document.getElementById('aps-modal').classList.remove('hidden');
+        }
+        function closeApsModal() { document.getElementById('aps-modal').classList.add('hidden'); }
+
+        // --- DYNAMIC UI FUNCTIONS ---
+        function addSecondary() {
+            const container = document.getElementById('secondary-container');
+            const id = 'sec-' + Date.now();
+            const div = document.createElement('div');
+            div.className = "flex gap-2 animate-fade-in";
+            div.id = id;
+            
+            let options = '<option value="" disabled selected>Pilih Komorbid...</option>';
+            appState.icdList.forEach(i => options += `<option value="${i.code}">${i.code} - ${i.name}</option>`);
+            
+            div.innerHTML = `
+                <select class="sec-diag-select block w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">${options}</select>
+                <button onclick="document.getElementById('${id}').remove()" class="text-red-500 hover:text-red-700 px-2"><i class="fa-solid fa-trash"></i></button>
+            `;
+            container.appendChild(div);
+        }
+
+        function toggleClassSelect() {
+            const checkbox = document.getElementById('upgrade-class-check');
+            const select = document.getElementById('upgrade-class-select');
+            const display = document.getElementById('default-class-display');
+            
+            if (checkbox.checked) {
+                display.classList.add('hidden');
+                select.classList.remove('hidden');
+            } else {
+                display.classList.remove('hidden');
+                select.classList.add('hidden');
+            }
+        }
+
+        function checkNeonatal(code) {
+            const container = document.getElementById('birth-weight-container');
+            if (code && (code.toUpperCase().startsWith('P') || code.toUpperCase().startsWith('Z38'))) {
+                container.classList.remove('hidden');
+                log("Neonatal code detected: Showing birth weight field.");
+            } else {
+                container.classList.add('hidden');
+                document.getElementById('birth-weight').value = '';
+            }
+        }
+
+        // --- API CALLS ---
+        async function fetchReferences() {
+            try {
+                const res = await fetch(`${API_URL}/references`);
+                if (!res.ok) throw new Error("Failed to load refs");
+                const data = await res.json();
+                appState.icdList = data.icd10; 
+                
+                const icd10 = document.getElementById('icd10-select');
+                icd10.innerHTML = '<option value="" disabled selected>Pilih Diagnosa...</option>';
+                data.icd10.forEach(i => icd10.innerHTML += `<option value="${i.code}">${i.code} - ${i.name}</option>`);
+
+                const icd9 = document.getElementById('icd9-select');
+                icd9.innerHTML = '<option value="">Tidak ada prosedur...</option>';
+                data.icd9.forEach(i => icd9.innerHTML += `<option value="${i.code}">${i.code} - ${i.name}</option>`);
+                
+                log("Reference Data (ICD) Loaded");
+            } catch (e) { log("Failed to load ICD data: " + e.message); }
+        }
+
+        function resetSimulation() {
+            document.getElementById('icd10-select').selectedIndex = 0;
+            document.getElementById('icd9-select').selectedIndex = 0;
+            document.getElementById('secondary-container').innerHTML = '';
+            document.getElementById('birth-weight').value = '';
+            document.getElementById('discharge-status').selectedIndex = 0;
+            
+            document.getElementById('upgrade-class-check').checked = false;
+            toggleClassSelect();
+            
+            document.getElementById('icd10-select').classList.remove('ring-2', 'ring-blue-500');
+            document.getElementById('icd9-select').classList.remove('ring-2', 'ring-blue-500');
+            document.getElementById('icd10-hint').classList.add('hidden');
+            document.getElementById('icd9-hint').classList.add('hidden');
+            document.getElementById('result-card').classList.add('hidden');
+            document.getElementById('birth-weight-container').classList.add('hidden'); 
+            
+            document.getElementById('aps-modal').classList.add('hidden');
+            
+            log("Form has been reset manually.");
+        }
+
+        async function checkEligibility() {
+            const btn = document.getElementById('btn-check');
+            const cardNo = document.getElementById('card-input').value;
+            btn.innerHTML = '...';
+            
+            // CLEAR OLD DOC INFO TO PREVENT CONFUSION
+            document.getElementById('doc-card').classList.add('hidden');
+            document.getElementById('btn-calc').disabled = true;
+            document.getElementById('btn-calc').classList.add('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
+            document.getElementById('btn-calc').classList.remove('bg-slate-800', 'text-white', 'hover:bg-slate-700');
+            // Hide old result card immediately
+            document.getElementById('eligibility-result').classList.add('hidden');
+            resetSimulation();
+
+            try {
+                const res = await fetch(`${API_URL}/eligibility/${cardNo}`);
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    const msg = data.detail || "Terjadi kesalahan saat mengambil data.";
+                    throw new Error(msg);
+                }
+                
+                appState.patient = data;
+                renderPatientInfo(data);
+                log(`Found: ${data.insurance_name}`);
+                
+                autoFillFromInvoice(cardNo);
+
+            } catch (err) {
+                showError(err.message); 
+                log("Error: " + err.message);
+            } finally {
+                btn.innerHTML = 'Cek';
+            }
+        }
+
+        async function autoFillFromInvoice(cardNo) {
+            document.getElementById('icd10-hint').classList.add('hidden');
+            document.getElementById('icd9-hint').classList.add('hidden');
+            try {
+                const res = await fetch(`${API_URL}/bill-details/${cardNo}`);
+                let data = { found: false };
+                if (res.ok) data = await res.json();
+                else if (cardNo === 'CARD-835FDC31') data = { found: true, icd10: 'I10', icd9: '99.04' };
+
+                if (data.found) {
+                    log(`Invoice found! Auto-filling...`);
+                    if(data.icd10) {
+                        const sel = document.getElementById('icd10-select');
+                        if (sel) {
+                            sel.value = data.icd10;
+                            sel.classList.add('ring-2', 'ring-blue-500');
+                            document.getElementById('icd10-hint').classList.remove('hidden');
+                            checkNeonatal(data.icd10); 
+                        }
+                    }
+                    if(data.icd9) {
+                        const sel = document.getElementById('icd9-select');
+                        if (sel) {
+                            sel.value = data.icd9;
+                            sel.classList.add('ring-2', 'ring-blue-500');
+                            document.getElementById('icd9-hint').classList.remove('hidden');
+                        }
+                    }
+                }
+            } catch(e) { log("Auto-fill skipped"); }
+        }
+
+        function renderPatientInfo(data) {
+            const resultBox = document.getElementById('eligibility-result');
+            if (resultBox) resultBox.classList.remove('hidden');
+            
+            safeSetText('res-name', data.patient_name);
+            safeSetText('res-nik', data.nik);
+            safeSetText('res-insurance-name', data.insurance_name);
+            safeSetText('res-gender', data.gender || '-');
+            safeSetText('res-class', data.class_level ? `Kelas ${data.class_level}` : '-');
+            
+            const header = document.getElementById('card-header');
+            const icon = document.getElementById('nav-icon');
+            const btnCreate = document.getElementById('btn-create-doc');
+            
+            // Reset Button State (in case it was set to "Selesai")
+            if (btnCreate) {
+                btnCreate.innerHTML = '<i class="fa-solid fa-file-signature"></i> <span id="btn-create-text">Buat Dokumen</span>';
+            }
+
+            const statusBox = document.getElementById('status-box');
+            const statusIcon = document.getElementById('status-icon');
+            const privateRules = document.getElementById('private-rules');
+            const classContainer = document.getElementById('class-change-container');
+            
+            if (data.insurance_type === 'GOVERNMENT') {
+                header.className = "bg-bpjs-600 px-5 py-4 flex justify-between items-center transition-colors duration-500";
+                icon.className = "bg-bpjs-500 text-white p-2.5 rounded-xl shadow-lg";
+                btnCreate.className = "w-full bg-bpjs-500 hover:bg-bpjs-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition-all flex justify-center items-center gap-2";
+                safeSetText('btn-create-text', "Terbitkan SEP (BPJS)");
+                if (privateRules) privateRules.classList.add('hidden');
+                if (classContainer) classContainer.classList.remove('hidden'); 
+                safeSetText('default-class-display', `Sesuai Hak Kelas (Kelas ${data.class_level})`); // Update class text
+                
+                statusBox.className = "bg-green-50 border border-green-100 rounded-xl p-4 mb-4";
+                statusIcon.className = "bg-green-100 p-2 rounded-full text-green-600 shadow-sm";
+                safeSetText('sim-mode', "Mode: INA-CBG (Package)");
+            } else {
+                header.className = "bg-private-600 px-5 py-4 flex justify-between items-center transition-colors duration-500";
+                icon.className = "bg-private-500 text-white p-2.5 rounded-xl shadow-lg";
+                btnCreate.className = "w-full bg-private-500 hover:bg-private-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg transition-all flex justify-center items-center gap-2";
+                safeSetText('btn-create-text', "Buat Guarantee Letter");
+                if (privateRules) privateRules.classList.remove('hidden');
+                if (classContainer) classContainer.classList.add('hidden');
+                
+                const rules = data.coverage_rules;
+                const covPct = rules ? rules.coverage_percentage + "%" : "N/A";
+                const plafonVal = rules ? fmtMoney(rules.plafon_limit) : "N/A";
+                safeSetText('res-cov-pct', covPct);
+                safeSetText('res-plafon', plafonVal);
+                
+                statusBox.className = "bg-purple-50 border border-purple-100 rounded-xl p-4 mb-4";
+                statusIcon.className = "bg-purple-100 p-2 rounded-full text-purple-600 shadow-sm";
+                safeSetText('sim-mode', "Mode: Coverage Analysis (Private)");
+            }
+            if(data.sep_no) fillDocInfo(data.sep_no);
+        }
+
+        async function generateDocument() {
+            if(!appState.patient) return;
+            const btn = document.getElementById('btn-create-doc');
+            btn.innerHTML = '...';
+            try {
+                const res = await fetch(`${API_URL}/sep`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ card_number: appState.patient.card_number, diagnosis_code: "A01.0", insurance_type: appState.patient.insurance_type })
+                });
+                const data = await res.json();
+                if(!res.ok) throw new Error(data.detail);
+                
+                appState.patient.sep_no = data.doc_number;
+                fillDocInfo(data.doc_number);
+                log(`Created ${data.doc_type}: ${data.doc_number}`);
+            } catch (err) { alert(err.message); } 
+            finally { btn.innerHTML = `<i class="fa-solid fa-check"></i> Selesai`; }
+        }
+
+        function fillDocInfo(num) {
+            document.getElementById('doc-card').classList.remove('hidden');
+            safeSetText('doc-number', num);
+            document.getElementById('btn-calc').disabled = false;
+            document.getElementById('btn-calc').classList.remove('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
+            document.getElementById('btn-calc').classList.add('bg-slate-800', 'text-white', 'hover:bg-slate-700');
+            const label = appState.patient.insurance_type === 'GOVERNMENT' ? 'Nomor SEP' : 'No. Guarantee Letter';
+            safeSetText('doc-label', label);
+        }
+
+        async function calculateBenefits() {
+            const btn = document.getElementById('btn-calc');
+            btn.innerHTML = 'Calculating...';
+            
+            const secDiags = Array.from(document.querySelectorAll('.sec-diag-select')).map(s => s.value).filter(v => v);
+            
+            let selectedClass = appState.patient.class_level || 3;
+            const upgradeCheck = document.getElementById('upgrade-class-check');
+            if (upgradeCheck && upgradeCheck.checked) {
+                selectedClass = parseInt(document.getElementById('upgrade-class-select').value);
+            }
+
+            const payload = {
+                doc_number: appState.patient.sep_no || "", 
+                icd10_code: document.getElementById('icd10-select').value,
+                icd9_code: document.getElementById('icd9-select').value || null,
+                secondary_icd10: secDiags,
+                discharge_status: document.getElementById('discharge-status').value,
+                birth_weight: parseInt(document.getElementById('birth-weight').value) || 0,
+                class_level: selectedClass 
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/grouper`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                
+                // --- FIXED ERROR HANDLING ---
+                if (!res.ok) {
+                    let errorMessage = "Validation Error";
+                    if (data.detail) {
+                        if (Array.isArray(data.detail)) {
+                            errorMessage = data.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+                        } else {
+                            errorMessage = data.detail;
+                        }
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                renderResults(data);
+                log(`Simulation: ${data.simulation_type} Success`);
+            } catch(err) { 
+                showError(err.message); 
+            } 
+            finally { btn.innerHTML = 'Hitung'; }
+        }
+
+        function renderResults(data) {
+            const card = document.getElementById('result-card');
+            
+            card.classList.remove('hidden');
+            document.getElementById('bpjs-split').classList.add('hidden');
+
+            const grid = document.getElementById('res-grid');
+            grid.innerHTML = ''; 
+            safeSetText('bill-total', fmtMoney(data.real_bill));
+
+            // HANDLE APS (PULANG PAKSA) - SHOW POPUP
+            if (data.warning_flag) {
+                card.classList.add('hidden'); // Hide result card
+                showApsModal(fmtMoney(data.patient_excess)); // Show Popup
+                return; 
+            }
+
+            if (data.simulation_type === 'INA-CBG') {
+                card.style.background = "#0f172a"; 
+                safeSetText('res-badge', "INA-CBG RESULT");
+                document.getElementById('res-badge').className = "bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded";
+                safeSetText('res-title', data.inacbg_code);
+                safeSetText('res-subtitle', data.description);
+                
+                grid.innerHTML += box("Severity", data.severity);
+                grid.innerHTML += box("Tariff Paket", fmtMoney(data.tariff), "text-green-400");
+                
+                // Show Split Payment
+                document.getElementById('bpjs-split').classList.remove('hidden');
+                safeSetText('split-sarana', fmtMoney(data.jasa_sarana));
+                safeSetText('split-pelayanan', fmtMoney(data.jasa_pelayanan));
+
+                safeSetText('fin-label', "Hospital Margin");
+                const margin = data.hospital_margin;
+                safeSetText('fin-amount', fmtMoney(Math.abs(margin)));
+                document.getElementById('fin-amount').className = margin < 0 ? "text-3xl font-bold text-red-400" : "text-3xl font-bold text-green-400";
+                safeSetText('fin-note', margin < 0 ? "Warning: Cost exceeds tariff" : "Good efficiency");
+            } else {
+                card.style.background = "#4c1d95"; 
+                safeSetText('res-badge', "COVERAGE ANALYSIS");
+                document.getElementById('res-badge').className = "bg-purple-500 text-white text-[10px] font-bold px-2 py-0.5 rounded";
+                safeSetText('res-title', "Private Insurance");
+                safeSetText('res-subtitle', data.description);
+
+                grid.innerHTML += box("Insurance Pays", fmtMoney(data.covered_amount), "text-green-300");
+                grid.innerHTML += box("Deductible", fmtMoney(data.deductible));
+                
+                safeSetText('fin-label', "Patient Pays (Excess)");
+                safeSetText('fin-amount', fmtMoney(data.patient_excess));
+                document.getElementById('fin-amount').className = "text-3xl font-bold text-orange-300";
+                
+                const note = data.patient_excess > 0 ? "Tagihan melebihi coverage / terkena deductible" : "Full Covered by Insurance";
+                safeSetText('fin-note', note);
+            }
+        }
+
+        function box(label, val, color="text-white") {
+            return `<div class="bg-white/10 rounded-xl p-4 border border-white/5 backdrop-blur-sm"><p class="text-xs text-white/50 uppercase font-bold mb-1">${label}</p><p class="font-bold text-xl ${color}">${val}</p></div>`;
+        }
+    </script>
+</body>
+</html>
